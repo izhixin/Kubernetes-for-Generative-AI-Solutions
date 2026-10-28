@@ -1,0 +1,62 @@
+name: Build and Push to AWS ECR (OIDC)
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+    paths:
+      - 'ch5/llama-finetuning/**'
+      - '.github/workflows/build-and-push-ecr.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # Required for OIDC
+  contents: read    # Required for checkout
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-actions-ecr-push
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ch5/llama-finetuning
+          file: ./ch5/llama-finetuning/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64

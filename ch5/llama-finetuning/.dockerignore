@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Logs and outputs
+logs/
+*.log
+wandb/
+outputs/
+runs/
+Llama_finetune_madmax/
+llama-*/
+*.ckpt
+*.safetensors
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# K8s manifests (not needed in image)
+*.yaml
+*.yml
+
+# Local env
+.env
+.env.*

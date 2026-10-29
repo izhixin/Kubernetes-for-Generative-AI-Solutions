@@ -20,9 +20,9 @@ RUN pip install --no-cache-dir \
       peft==0.20.0 \
       accelerate==1.15.0 \
       bitsandbytes==0.50.2 \
-      sentencepiece==0.2.2 \
-      s3fs==2025.12.0 \
-      boto3==1.43.93
+      sentencepiece \
+      s3fs \
+      boto3
 
 WORKDIR /app
 

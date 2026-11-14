@@ -142,9 +142,10 @@ kubectl apply -f finetuned-inf-deploy.yaml
 You can also build and push it in CI. Add a repository secret `MODEL_S3_URI`
 holding the adapter prefix (`s3://<bucket>/llama-<timestamp>/`), then open
 **Actions → Build and Push to AWS ECR (OIDC) → Run workflow** and select
-`inference` (or `all`). The workflow syncs the adapter into
-`inference/model-assets/` before `docker build`, so the weights never enter git,
-and pushes an image to the `my-llama-finetuned` repository. The workflow is
+`inference` (or `all`). Leave `image_tag` empty to use the current Beijing
+time (`YYYY-MM-DD-HH-mm`), or type your own tag. The workflow syncs the adapter
+into `inference/model-assets/` before `docker build`, so the weights never enter
+git, and pushes an image to the `my-llama-finetuned` repository. The workflow is
 manual-only: pushes never trigger a build, and `llama-finetuning` is built only
 when you select it. Its image goes to `my-llama`; override either repository
 with the `ECR_REPOSITORY_INFERENCE` / `ECR_REPOSITORY_FINETUNING` repository

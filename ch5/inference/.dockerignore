@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+venv/
+.venv/
+
+# Logs
+*.log
+
+# K8s manifests (not needed in image)
+*.yaml
+*.yml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local env
+.env
+.env.*
+
+# NOTE: do not ignore model-assets/ -- the Dockerfile bakes it into the image.

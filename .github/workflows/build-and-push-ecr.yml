@@ -1,29 +1,84 @@
 name: Build and Push to AWS ECR (OIDC)
 
+# Manual-only workflow: pushes to the repository never trigger a build.
+# Pick the project in the Actions UI (Actions -> Run workflow).
 on:
-  push:
-    branches: [main]
-    tags:
-      - 'v*'
-    paths:
-      - 'ch5/llama-finetuning/**'
-      - '.github/workflows/build-and-push-ecr.yml'
   workflow_dispatch:
+    inputs:
+      project:
+        description: 'Project to build'
+        type: choice
+        required: true
+        default: inference
+        options:
+          - inference
+          - llama-finetuning
+          - all
 
 permissions:
   id-token: write   # Required for OIDC
   contents: read    # Required for checkout
 
+# Never run two builds of the same selection at once.
+concurrency:
+  group: ecr-build-${{ inputs.project }}
+  cancel-in-progress: false
+
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
-  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
 
 jobs:
-  build-and-push:
+  # Resolve the manual selection into a build matrix. Job-level `if` cannot read
+  # the matrix context, so the filtering happens here instead.
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - name: Build project matrix
+        id: matrix
+        env:
+          PROJECT: ${{ inputs.project }}
+          # Optional repository overrides; defaults match ch5/ecr.tf.
+          REPO_INFERENCE: ${{ vars.ECR_REPOSITORY_INFERENCE }}
+          REPO_FINETUNING: ${{ vars.ECR_REPOSITORY_FINETUNING }}
+        run: |
+          set -euo pipefail
+          repo_inference="${REPO_INFERENCE:-my-llama-finetuned}"
+          repo_finetuning="${REPO_FINETUNING:-my-llama}"
+
+          inference=$(printf '{"project":"inference","context":"./ch5/inference","dockerfile":"./ch5/inference/Dockerfile","repository":"%s"}' "$repo_inference")
+          finetuning=$(printf '{"project":"llama-finetuning","context":"./ch5/llama-finetuning","dockerfile":"./ch5/llama-finetuning/Dockerfile","repository":"%s"}' "$repo_finetuning")
+
+          case "$PROJECT" in
+            inference)        include="$inference" ;;
+            llama-finetuning) include="$finetuning" ;;
+            all)              include="$inference,$finetuning" ;;
+            *)
+              echo "::error::Unknown project: $PROJECT"
+              exit 1
+              ;;
+          esac
+
+          printf 'value={"include":[%s]}\n' "$include" >> "$GITHUB_OUTPUT"
+          echo "Selected project: $PROJECT"
+
+  build-and-push:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # The CUDA base image plus PyTorch needs a lot of room; drop toolchains
+      # that this build does not use.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -31,6 +86,25 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: github-actions-ecr-push
+
+      # The inference Dockerfile bakes the fine-tuned adapter into the image,
+      # so pull it into the build context first.
+      - name: Sync model assets from S3
+        if: matrix.project == 'inference'
+        env:
+          MODEL_S3_URI: ${{ secrets.MODEL_S3_URI }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MODEL_S3_URI:-}" ]; then
+            echo "::error::Repository secret MODEL_S3_URI is not set (expected e.g. s3://bucket/llama-<timestamp>/)."
+            exit 1
+          fi
+          mkdir -p ./ch5/inference/model-assets
+          aws s3 sync "${MODEL_S3_URI%/}/" ./ch5/inference/model-assets/ --only-show-errors
+          if [ -z "$(ls -A ./ch5/inference/model-assets)" ]; then
+            echo "::error::./ch5/inference/model-assets is empty after syncing ${MODEL_S3_URI}"
+            exit 1
+          fi
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -43,7 +117,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          images: ${{ steps.login-ecr.outputs.registry }}/${{ matrix.repository }}
           tags: |
             type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
@@ -52,11 +126,11 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: ./ch5/llama-finetuning
-          file: ./ch5/llama-finetuning/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.project }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.project }}
           platforms: linux/amd64

@@ -139,6 +139,18 @@ docker build -t my-llama-finetuned .
 kubectl apply -f finetuned-inf-deploy.yaml
 ```
 
+You can also build and push it in CI. Add a repository secret `MODEL_S3_URI`
+holding the adapter prefix (`s3://<bucket>/llama-<timestamp>/`), then open
+**Actions → Build and Push to AWS ECR (OIDC) → Run workflow** and select
+`inference` (or `all`). The workflow syncs the adapter into
+`inference/model-assets/` before `docker build`, so the weights never enter git,
+and pushes an image to the `my-llama-finetuned` repository. The workflow is
+manual-only: pushes never trigger a build, and `llama-finetuning` is built only
+when you select it. Its image goes to `my-llama`; override either repository
+with the `ECR_REPOSITORY_INFERENCE` / `ECR_REPOSITORY_FINETUNING` repository
+variables. The OIDC role needs `s3:ListBucket` on the bucket and
+`s3:GetObject` on the adapter prefix.
+
 ### 5. RAG app and chat UI
 
 Seed Qdrant from the book's published snapshot:

@@ -36,4 +36,7 @@ override.tf.json
 .terraformrc
 terraform.rc
 
+# Fine-tuned model assets synced from S3 at build time (large, never committed)
+ch5/inference/model-assets/
+
 .DS_Store

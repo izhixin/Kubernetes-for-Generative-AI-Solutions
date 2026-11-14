@@ -14,11 +14,6 @@ on:
           - inference
           - llama-finetuning
           - all
-      image_tag:
-        description: 'Image tag; leave empty to use the current Beijing time (e.g. 2026-11-14-10-45)'
-        type: string
-        required: false
-        default: ''
 
 permissions:
   id-token: write   # Required for OIDC
@@ -39,31 +34,16 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.value }}
-      tag: ${{ steps.matrix.outputs.tag }}
     steps:
       - name: Build project matrix
         id: matrix
         env:
           PROJECT: ${{ inputs.project }}
-          IMAGE_TAG: ${{ inputs.image_tag }}
           # Optional repository overrides; defaults match ch5/ecr.tf.
           REPO_INFERENCE: ${{ vars.ECR_REPOSITORY_INFERENCE }}
           REPO_FINETUNING: ${{ vars.ECR_REPOSITORY_FINETUNING }}
         run: |
           set -euo pipefail
-
-          # workflow_dispatch defaults cannot be computed, so an empty input
-          # means "use the current Beijing time".
-          if [ -n "${IMAGE_TAG:-}" ]; then
-            tag="$IMAGE_TAG"
-          else
-            tag="$(TZ=Asia/Shanghai date +%Y-%m-%d-%H-%M)"
-          fi
-          if ! [[ "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
-            echo "::error::Invalid image tag: $tag"
-            exit 1
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
           repo_inference="${REPO_INFERENCE:-my-llama-finetuned}"
           repo_finetuning="${REPO_FINETUNING:-my-llama}"
@@ -83,7 +63,6 @@ jobs:
 
           printf 'value={"include":[%s]}\n' "$include" >> "$GITHUB_OUTPUT"
           echo "Selected project: $PROJECT"
-          echo "Image tag: $tag"
 
   build-and-push:
     needs: prepare
@@ -141,7 +120,6 @@ jobs:
         with:
           images: ${{ steps.login-ecr.outputs.registry }}/${{ matrix.repository }}
           tags: |
-            type=raw,value=${{ needs.prepare.outputs.tag }}
             type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
@@ -156,12 +134,3 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.project }}
           cache-to: type=gha,mode=max,scope=${{ matrix.project }}
           platforms: linux/amd64
-
-      - name: Show image tags
-        if: always()
-        run: |
-          {
-            echo "### Image tag: \`${{ needs.prepare.outputs.tag }}\`"
-            echo ""
-            echo "Repository: \`${{ matrix.repository }}\`"
-          } >> "$GITHUB_STEP_SUMMARY"

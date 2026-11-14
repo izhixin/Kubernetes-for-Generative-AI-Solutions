@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir \
       peft==0.20.0 \
       accelerate==1.15.0 \
       bitsandbytes==0.50.2 \
-      sentencepiece==0.2.2 \
+      sentencepiece \
       fastapi==0.141.1 \
       uvicorn==0.52.4
 

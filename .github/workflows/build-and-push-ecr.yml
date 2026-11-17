@@ -13,6 +13,7 @@ on:
         options:
           - inference
           - llama-finetuning
+          - rag-app
           - all
 
 permissions:
@@ -42,19 +43,23 @@ jobs:
           # Optional repository overrides; defaults match ch5/ecr.tf.
           REPO_INFERENCE: ${{ vars.ECR_REPOSITORY_INFERENCE }}
           REPO_FINETUNING: ${{ vars.ECR_REPOSITORY_FINETUNING }}
+          REPO_RAG_APP: ${{ vars.ECR_REPOSITORY_RAG_APP }}
         run: |
           set -euo pipefail
 
           repo_inference="${REPO_INFERENCE:-my-llama-finetuned}"
           repo_finetuning="${REPO_FINETUNING:-my-llama}"
+          repo_rag_app="${REPO_RAG_APP:-rag-app}"
 
           inference=$(printf '{"project":"inference","context":"./ch5/inference","dockerfile":"./ch5/inference/Dockerfile","repository":"%s"}' "$repo_inference")
           finetuning=$(printf '{"project":"llama-finetuning","context":"./ch5/llama-finetuning","dockerfile":"./ch5/llama-finetuning/Dockerfile","repository":"%s"}' "$repo_finetuning")
+          rag_app=$(printf '{"project":"rag-app","context":"./ch5/rag-app","dockerfile":"./ch5/rag-app/Dockerfile","repository":"%s"}' "$repo_rag_app")
 
           case "$PROJECT" in
             inference)        include="$inference" ;;
             llama-finetuning) include="$finetuning" ;;
-            all)              include="$inference,$finetuning" ;;
+            rag-app)          include="$rag_app" ;;
+            all)              include="$inference,$finetuning,$rag_app" ;;
             *)
               echo "::error::Unknown project: $PROJECT"
               exit 1
